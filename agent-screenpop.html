@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Screen Pop (Lab) v11.25</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
+    .card { background: #fff; padding: 15px; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    button { padding: 6px 12px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; }
+    .blue { background: #007bff; color: white; }
+    .gray { background: #6c757d; color: white; }
+    .red { background: #dc3545; color: white; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; display: inline-block; }
+    .pill-premium { background: #ffd54f; color: #4e342e; border: 1px solid #f9a825; }
+    .pill-standard { background: #e0e0e0; color: #424242; border: 1px solid #bdbdbd; }
+    .premium-banner { background: #fff8e1; border-left: 4px solid #f9a825; color: #4e342e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h2>Agent Screen Pop (Lab) v11.25</h2>
+  <div id="premiumBanner" class="card premium-banner" style="display:none;">PREMIUM CUSTOMER</div>
+  <div id="profile" class="card"></div>
+  <div id="orders" class="card"></div>
+
+<script>
+const API_BASE = "https://reqres.in/api/custom";
+// API base: same-origin by default; override with ?api=URL for Live Server
+const DEFAULT_MW_BASE = window.location.origin + "/api";
+const urlApiOverride = new URLSearchParams(window.location.search).get("api");
+const MIDDLEWARE_BASE = (urlApiOverride && decodeURIComponent(urlApiOverride)) || DEFAULT_MW_BASE;
+const noCache = (url) => url + (url.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
+const API_KEY = "reqres_452752df881a4d27834ad2e45ba7bd31";
+
+const urlParams=new URLSearchParams(window.location.search);
+const mobile=urlParams.get("mobile_number");
+
+if(mobile) lookup(mobile);
+
+function lookup(mobile){
+  fetch(noCache(`${MIDDLEWARE_BASE}/lookup/mobile/${encodeURIComponent(mobile)}`), { headers:{ "X-API-Key":API_KEY }})
+    .then(r=>r.json()).then(u=>{
+      if(!u||u.error){ alert("Customer not found"); return; }
+      // Show prominent banner for premium customers
+      const isPremium = (u.is_premium === true) || (u.premium === true);
+      document.getElementById("premiumBanner").style.display = isPremium ? "block" : "none";
+      const premiumPill = isPremium ? '<span class="pill pill-premium" aria-label="Premium customer">Premium</span>' : '<span class="pill pill-standard" aria-label="Standard customer">Standard</span>';
+      document.getElementById("profile").innerHTML=`<b>Customer:</b> ${u.first_name||""} ${u.last_name||""}<br>
+        <b>Email:</b> ${u.email||"-"}<br><b>Mobile:</b> ${u.mobile_number||u.mobile||"-"}<br>
+        <b>Status:</b> ${premiumPill}`;
+
+      loadOrders(u.id);
+    });
+}
+
+function loadOrders(uid){
+  fetch(noCache(`${MIDDLEWARE_BASE}/orders/${uid}`), { headers:{ "X-API-Key":API_KEY }})
+    .then(r=>r.json()).then(d=>{
+      const list=document.getElementById("orders"); list.innerHTML="<h3>Orders</h3>";
+      if(!d.data||!d.data.length){ list.innerHTML+="No orders."; return; }
+      d.data.forEach(o=>{
+        const el=document.createElement("div");
+        const basePayload = JSON.stringify(o.data).replace(/"/g, "&quot;");
+        const statusInputId = `status_${o.id}`;
+        const safeStatus = (o.data.status||"").replace(/"/g, '&quot;');
+        el.innerHTML=`
+          <div><b>Order</b> ${o.id}</div>
+          <div>${o.data.product_name||"-"} - USD ${o.data.amount!=null?o.data.amount:"-"}</div>
+          <div>Current Status: <b>${o.data.status||"-"}</b></div>
+          <div style="margin:6px 0;">
+            <input id="${statusInputId}" style="width:80%;padding:6px;" value="${safeStatus}">
+            <button class="blue" onclick="updateOrder('${o.id}', document.getElementById('${statusInputId}').value, ${basePayload})">Save</button>
+          </div>
+          <div>
+            <button class="red" onclick="updateOrder('${o.id}','CANCELLED', ${basePayload})">Cancel</button>
+            <button class="gray" onclick="updateOrder('${o.id}','RETURNED', ${basePayload})">Return</button>
+          </div>
+          <hr>`;
+        list.appendChild(el);
+      });
+    });
+}
+
+function updateOrder(id,status,base){
+  const payload = { ...(base||{}), status };
+  fetch(`${API_BASE}/orders/${id}`, {
+    method:"PUT", headers:{ "Content-Type":"application/json","X-API-Key":API_KEY },
+    body:JSON.stringify({ data: payload })
+  }).then(_=>location.reload());
+}
+</script>
+</body>
+</html>

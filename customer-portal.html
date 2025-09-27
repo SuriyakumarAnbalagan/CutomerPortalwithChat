@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Avaya Infinity E-Commerce Lab</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: linear-gradient(180deg, #f5f7fb 0%, #eef1f6 100%);
+      background-attachment: fixed;
+    }
+    .card { background: #fff; padding: 15px; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    button { padding: 6px 12px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; }
+    .blue { background: #007bff; color: white; }
+    .gray { background: #6c757d; color: white; }
+    .green { background: #28a745; color: white; }
+    .red { background: #dc3545; color: white; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; display: inline-block; }
+    .pill-premium { background: #ffd54f; color: #4e342e; border: 1px solid #f9a825; }
+    .pill-standard { background: #e0e0e0; color: #424242; border: 1px solid #bdbdbd; }
+    .premium-banner { background: #fff8e1; border-left: 4px solid #f9a825; color: #4e342e; font-weight: 700; }
+    .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    /* Products layout */
+    .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; align-items: stretch; }
+    .product-card { background: #fff; border: 1px solid #eee; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .product-card img { width: 100%; height: 150px; object-fit: contain; border-radius: 6px; background: #fafafa; }
+    .product-name { font-weight: 600; margin-top: 8px; }
+    .product-price { color: #333; margin: 4px 0 8px; }
+    /* Fallback styling for existing markup */
+    .products-grid > div { background: #fff; border: 1px solid #eee; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); text-align: center; }
+    .products-grid > div img { width: 100%; height: 150px; object-fit: contain; border-radius: 6px; background: #fafafa; display: block; margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <img id="brandLogo" alt="Brand Logo" style="height:40px;display:none;" />
+    <h2 class="page-title" style="margin:0;">Avaya Infinity E-Commerce Lab</h2>
+  </div>
+  <div id="premiumBanner" class="card premium-banner" style="display:none;">PREMIUM CUSTOMER</div>
+
+  <!-- Login -->
+  <div id="loginCard" class="card">
+    <input id="loginInput" placeholder="Email or Mobile (+91...)" style="width:70%;padding:6px;">
+    <button class="blue" onclick="login()">Login</button>
+    <button class="gray" onclick="toggleRegister()">Register New Customer</button>
+  </div>
+
+  <!-- Register -->
+  <div id="registerCard" class="card" style="display:none;">
+    <h3>Register New Customer</h3>
+    <input id="firstName" placeholder="First Name"><br>
+    <input id="lastName" placeholder="Last Name"><br>
+    <input id="email" placeholder="Email"><br>
+    <input id="mobile" placeholder="Mobile"><br>
+    <input id="city" placeholder="City"><br>
+    <input id="state" placeholder="State"><br>
+    <input id="country" placeholder="Country"><br>
+    <input id="postal" placeholder="Postal Code"><br>
+    <label><input type="checkbox" id="premium"> Premium Account</label><br>
+    <button class="blue" onclick="register()">Create Account</button>
+  </div>
+
+  <!-- Profile -->
+  <div id="profileCard" class="card" style="display:none;">
+    <p id="welcome"></p>
+    <p id="shipping"></p>
+    <p id="premiumFlag"></p>
+    <button class="red" onclick="logout()">Logout</button>
+  </div>
+
+  <!-- Products -->
+  <div id="productsCard" class="card" style="display:none;">
+    <h3>Products</h3>
+    <div id="products" class="products-grid"></div>
+  </div>
+
+  <!-- Cart -->
+  <div id="cartCard" class="card" style="display:none;">
+    <h3>Shopping Cart</h3>
+    <div id="cart"></div>
+    <p id="cartTotal">Total: USD 0.00</p>
+    <button class="gray" onclick="clearCart()">Clear Cart</button>
+    <button class="green" onclick="placeOrder()">Place Order</button>
+  </div>
+
+  <!-- Orders -->
+  <div id="ordersCard" class="card" style="display:none;">
+    <h3>My Orders</h3>
+    <div id="orders"></div>
+    <button class="gray" onclick="loadOrders()">Refresh</button>
+  </div>
+
+  <!-- Chat Support -->
+  <div id="chatCard" class="card">
+    <h3>Need Assistance?</h3>
+    <p id="omniChatStatus" style="margin:4px 0 10px;font-size:13px;color:#555;">Login to start chat.</p>
+    <button id="chatLaunchBtn" class="blue" type="button">Start Chat</button>
+    <div id="omniChatMount" style="display:none;margin-top:12px;"></div>
+  </div>
+<!-- Omni SDK is loaded on demand via ensureOmniSdkLoaded -->
+<script>
+const API_BASE = "https://reqres.in/api/custom";
+// API base: same-origin by default; override with ?api=URL for Live Server
+const DEFAULT_MW_BASE = window.location.origin + "/api";
+const urlApiOverride = new URLSearchParams(window.location.search).get("api");
+const MIDDLEWARE_BASE = (urlApiOverride && decodeURIComponent(urlApiOverride)) || DEFAULT_MW_BASE;
+const noCache = (url) => url + (url.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
+// Optional visual customization via URL params: ?bg=<img_url>&logo=<img_url>
+(()=>{
+  const params = new URLSearchParams(window.location.search);
+  const bg = params.get('bg');
+  const logo = params.get('logo');
+  if (bg) {
+    document.body.style.backgroundImage = `linear-gradient(180deg, rgba(245,247,251,0.92) 0%, rgba(238,241,246,0.92) 100%), url('${bg}')`;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundRepeat = 'no-repeat';
+    document.body.style.backgroundAttachment = 'fixed';
+    document.body.style.backgroundPosition = 'center center';
+  }
+  if (logo) {
+    const img = document.getElementById('brandLogo');
+    img.src = logo;
+    img.style.display = 'block';
+  }
+})();
+const API_KEY = "reqres_452752df881a4d27834ad2e45ba7bd31";
+
+const chatElements = {
+  card: document.getElementById("chatCard"),
+  openBtn: document.getElementById("chatLaunchBtn"),
+  status: document.getElementById("omniChatStatus"),
+  mount: document.getElementById("omniChatMount")
+};
+
+const OMNI_DEFAULTS = Object.freeze({
+  sdkUrl: "/static/lib/avaya-infinity-omni-sdk-messaging-ui.min.js",
+  mountId: "omniChatMount",
+  preferModule: false
+});
+
+let omniSdkLoader = null;
+let omniChatSession = null;
+
+if (chatElements.openBtn) {
+  chatElements.openBtn.addEventListener("click", launchOmniChat);
+  chatElements.openBtn.disabled = true;
+}
+
+setChatStatus("Login to start chat.");
+broadcastChatIdentity(null);
+
+function setChatStatus(message, type = "info") {
+  if (!chatElements.status) return;
+  chatElements.status.textContent = message;
+  chatElements.status.dataset.state = type;
+}
+
+function getOmniConfig() {
+  const overrides = window.AvayaInfinityOmniConfig || {};
+  const config = { ...OMNI_DEFAULTS, ...overrides };
+  if (!config.mountId && chatElements.mount) {
+    config.mountId = chatElements.mount.id;
+  }
+  return config;
+}
+
+function resolveOmniSdk()  {
+  return window.OmniSDK
+      || (window.AvayaInfinity && window.AvayaInfinity.OmniSDK)
+      || (window.Avaya && window.Avaya.OmniSDK)
+      || window.AvayaInfinity          // Core SDK UMD (has DigitalClient)
+      || window.AvayaInfinityOmniSDK
+      || null;
+}
+
+function ensureOmniSdkLoaded(configOrUrl) {
+  const config = typeof configOrUrl === "string" ? { sdkUrl: configOrUrl } : (configOrUrl || {});
+  const sdkUrl = config.sdkUrl;
+  if (!sdkUrl) {
+    return Promise.reject(new Error("Avaya Infinity Omni SDK URL is not configured."));
+  }
+  const existing = resolveOmniSdk();
+  if (existing) return Promise.resolve(existing);
+  if (omniSdkLoader) return omniSdkLoader;
+
+  const resolvedModuleUrl = (() => {
+    try {
+      return new URL(sdkUrl, window.location.href).toString();
+    } catch (_) {
+      return sdkUrl;
+    }
+  })();
+
+  const preferModule = config.sdkType === "module" ||
+    config.preferModule === true ||
+    /\.mjs($|\?)/i.test(resolvedModuleUrl) ||
+    resolvedModuleUrl.includes(".esm") ||
+    resolvedModuleUrl.includes("-esm");
+
+  const attachGlobals = (sdk, namespace) => {
+    if (!window.OmniSDK) window.OmniSDK = sdk;
+    if (!window.AvayaInfinity) {
+      if (namespace && namespace.AvayaInfinity && typeof namespace.AvayaInfinity === "object") {
+        window.AvayaInfinity = namespace.AvayaInfinity;
+      } else {
+        window.AvayaInfinity = {};
+      }
+    }
+    if (!window.AvayaInfinity.OmniSDK) window.AvayaInfinity.OmniSDK = sdk;
+    if (!window.AvayaInfinityOmniSDK) window.AvayaInfinityOmniSDK = sdk;
+    return sdk;
+  };
+
+  const selectNamespace = (namespace) => {
+    if (!namespace) return null;
+    const candidates = [
+      namespace,
+      namespace.default,
+      namespace.OmniSDK,
+      namespace.AvayaInfinity,
+      namespace.AvayaInfinity && namespace.AvayaInfinity.OmniSDK
+    ];
+    return candidates.find((candidate) => candidate && typeof candidate.DigitalClient === "function") || null;
+  };
+
+  const loadAsModule = async () => {
+    const namespace = await import(/* @vite-ignore */ /* webpackIgnore: true */ resolvedModuleUrl);
+    const sdk = selectNamespace(namespace);
+    if (!sdk) {
+      throw new Error("Avaya Infinity Omni SDK module loaded but DigitalClient export was not found.");
+    }
+    return attachGlobals(sdk, namespace);
+  };
+
+  const loadAsScript = () => new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = sdkUrl;
+    if (config.sdkType === "module") {
+      script.type = "module";
+    }
+    if (config.crossOrigin) {
+      script.crossOrigin = config.crossOrigin;
+    }
+    script.async = true;
+    script.onload = () => {
+      const sdk = resolveOmniSdk();
+      if (sdk) {
+        resolve(attachGlobals(sdk, window));
+      } else {
+        reject(new Error("Avaya Infinity Omni SDK loaded but global namespace was not found."));
+      }
+    };
+    script.onerror = () => reject(new Error(`Failed to load Avaya Infinity Omni SDK from ${sdkUrl}`));
+    document.head.appendChild(script);
+  });
+
+  omniSdkLoader = (async () => {
+    if (preferModule) {
+      try {
+        return await loadAsModule();
+      } catch (err) {
+        console.warn("Module load for Avaya Infinity Omni SDK failed, retrying as classic script.", err);
+        if (config.sdkType === "module") throw err;
+      }
+    }
+    try {
+      return await loadAsScript();
+    } catch (err) {
+      console.warn("Script load for Avaya Infinity Omni SDK failed.", err);
+      if (!preferModule) {
+        return await loadAsModule();
+      }
+      throw err;
+    }
+  })();
+
+  return omniSdkLoader;
+}
+
+function buildChatIdentity(user = currentUser) {
+  if (!user) return null;
+  const data = user.data || {};
+  return {
+    id: user.id || data.id,
+    firstName: data.first_name,
+    lastName: data.last_name,
+    email: data.email,
+    phone: data.mobile_number || data.mobile,
+    isPremium: data.is_premium === true || data.premium === true
+  };
+}
+
+function broadcastChatIdentity(user) {
+  const detail = { identity: buildChatIdentity(user) };
+  window.dispatchEvent(new CustomEvent("avaya-omni-identity", { detail }));
+}
+
+async function launchOmniChat() {
+  const config = getOmniConfig();
+  if (!config.sdkUrl) {
+    setChatStatus("Set window.AvayaInfinityOmniConfig.sdkUrl before starting chat.", "warn");
+    return;
+  }
+  if (!currentUser && !config.allowAnonymous) {
+    setChatStatus("Login to start chat before opening the widget.", "warn");
+    return;
+  }
+  setChatStatus("Connecting to chat...");
+  try {
+    const sdk = await ensureOmniSdkLoaded(config);
+    if (typeof config.initialize !== "function") {
+      setChatStatus("Define window.AvayaInfinityOmniConfig.initialize(context) to bootstrap the Omni chat experience.", "warn");
+      return;
+    }
+    const mountNode = document.getElementById(config.mountId) || chatElements.mount;
+    if (!mountNode) throw new Error("Chat mount point not found.");
+    mountNode.style.display = "block";
+    const context = {
+      sdk,
+      mountNode,
+      config,
+      identity: buildChatIdentity(),
+      previousSession: omniChatSession
+    };
+    const session = await config.initialize(context);
+    if (session) {
+      omniChatSession = session;
+    }
+    if (typeof config.onReady === "function") {
+      config.onReady({ session: omniChatSession, sdk, mountNode, identity: context.identity });
+    }
+    setChatStatus("Chat is active.");
+  } catch (err) {
+    console.error("Avaya Infinity Omni chat failed to start", err);
+    setChatStatus("Unable to start chat. Check console for details.", "error");
+  }
+}let currentUser = null;
+let cart = [];
+
+function toggleRegister() {
+  document.getElementById("registerCard").style.display =
+    document.getElementById("registerCard").style.display === "none" ? "block" : "none";
+}
+
+function register() {
+  const payload = {
+    // Create user in the canonical (old) schema used by the app
+    first_name: document.getElementById("firstName").value,
+    last_name: document.getElementById("lastName").value,
+    email: document.getElementById("email").value,
+    is_premium: document.getElementById("premium").checked,
+    mobile_number: document.getElementById("mobile").value,
+    address: {
+      city: document.getElementById("city").value,
+      state: document.getElementById("state").value,
+      country: document.getElementById("country").value,
+      postal_code: document.getElementById("postal").value,
+      line1: document.getElementById("city").value,
+      line2: ""
+    }
+  };
+
+  fetch(`${API_BASE}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    body: JSON.stringify(payload)
+  }).then(r=>r.json()).then(_=>{
+    alert("Registered! Now login");
+    document.getElementById("registerCard").style.display="none";
+  });
+}
+
+function login() {
+  const input = document.getElementById("loginInput").value.trim();
+  if (!input) return alert("Enter Email or Mobile");
+
+  const normPhone = (s)=> (s||"").replace(/\D/g, ""); // digits-only compare
+  const inputPhone = normPhone(input);
+  const isEmail = input.includes("@");
+
+  fetch(noCache(`${API_BASE}/users?limit=200`), { headers: { "X-API-Key": API_KEY }})
+    .then(r=>r.json()).then(d=>{
+      const users = (d && d.data) || [];
+      let u;
+      if (isEmail) {
+        const target = input.toLowerCase();
+        u = users.find(u => ((u.data.email||"").toLowerCase() === target));
+      } else {
+        // Only treat as phone if we have at least some digits
+        if (!inputPhone) { alert("Enter a valid mobile number"); return; }
+        u = users.find(u => (
+          normPhone(u.data.mobile_number) === inputPhone ||
+          normPhone(u.data.mobile) === inputPhone
+        ));
+      }
+      if (!u) return alert("User not found");
+
+      currentUser = u;
+      broadcastChatIdentity(currentUser);
+if (chatElements.openBtn) {
+  chatElements.openBtn.disabled = false;
+}
+setChatStatus("Ready to chat. Click Start Chat.");
+
+      document.getElementById("welcome").innerText = `Hello, ${u.data.first_name||""} ${u.data.last_name||""}`;
+      const addr = (u.data && u.data.address) || {
+        city: u.data.city,
+        state: u.data.state,
+        country: u.data.country,
+        postal_code: u.data.postal
+      };
+      document.getElementById("shipping").innerText = `Shipping Address: ${addr.city||"-"}, ${addr.state||"-"}, ${addr.country||"-"}, ${addr.postal_code||"-"}`;
+      const isPremium = (u.data.is_premium === true) || (u.data.premium === true);
+      const premiumPill = isPremium ? '<span class="pill pill-premium" aria-label="Premium customer">Premium</span>' : '<span class="pill pill-standard" aria-label="Standard customer">Standard</span>';
+      document.getElementById("premiumBanner").style.display = isPremium ? "block" : "none";
+      document.getElementById("premiumFlag").innerHTML = `Status: ${premiumPill}`;
+
+      document.getElementById("loginCard").style.display="none";
+      document.getElementById("profileCard").style.display="block";
+      document.getElementById("productsCard").style.display="block";
+      document.getElementById("cartCard").style.display="block";
+      document.getElementById("ordersCard").style.display="block";
+      loadProducts();
+      loadOrders();
+    });
+}
+
+function logout(){
+  broadcastChatIdentity(null);
+  if (chatElements.openBtn) {
+    chatElements.openBtn.disabled = true;
+  }
+  setChatStatus("Login to start chat.");
+  location.reload();
+}
+
+function loadProducts() {
+  fetch(noCache(`${API_BASE}/products?page=1&limit=200`), { headers: { "X-API-Key": API_KEY }})
+    .then(r=>r.json()).then(d=>{
+      const list=document.getElementById("products"); list.innerHTML="";
+      d.data.forEach(p=>{
+        const el=document.createElement("div");
+        el.innerHTML=`<b>${p.data.name}</b><br>USD ${p.data.price}<br>
+          <img src="${p.data.image}" width="150"><br>
+          <button class="blue" onclick='addToCart(${JSON.stringify(p.data).replace(/"/g,"&quot;")})'>Add to Cart</button>`;
+        list.appendChild(el);
+      });
+    });
+}
+
+function addToCart(prod){ cart.push(prod); renderCart(); }
+
+function renderCart() {
+  let html=""; let total=0;
+  cart.forEach((c,i)=>{ html+=`${i+1}. ${c.name} – USD ${c.price}<br>`; total+=c.price; });
+  document.getElementById("cart").innerHTML=html||"Your cart is empty.";
+  document.getElementById("cartTotal").innerText=`Total: USD ${total.toFixed(2)}`;
+}
+
+function clearCart(){ cart=[]; renderCart(); }
+
+function placeOrder() {
+  if (!cart.length) return alert("Cart is empty");
+  cart.forEach(prod=>{
+    const payload={ amount: prod.price, status:"PLACED", user_id:currentUser.id, product_id:prod.id, product_name:prod.name };
+    fetch(`${API_BASE}/orders`, {
+      method:"POST", headers:{ "Content-Type":"application/json", "X-API-Key":API_KEY },
+      body:JSON.stringify({ data: payload })
+    }).then(r=>r.json()).then(_=>{ loadOrders(); });
+  });
+  cart=[]; renderCart();
+}
+
+function loadOrders() {
+  if (!currentUser) return;
+  fetch(noCache(`${MIDDLEWARE_BASE}/orders/${currentUser.id}`), { headers: { "X-API-Key": API_KEY }})
+    .then(r=>r.json()).then(d=>{
+      const list=document.getElementById("orders"); list.innerHTML="";
+      if (!d.data || !d.data.length) { list.innerText="No orders yet."; return; }
+      d.data.forEach(o=>{
+        const el=document.createElement("div");
+        const basePayload = JSON.stringify(o.data).replace(/"/g, "&quot;");
+        el.innerHTML=`Order ${o.id} - ${o.data.product_name||"-"} - USD ${o.data.amount!=null?o.data.amount:"-"}<br>
+          Status: <b>${o.data.status}</b><br>
+          <button class="red" onclick="updateOrder('${o.id}','CANCELLED', ${basePayload})">Cancel</button>
+          <button class="gray" onclick="updateOrder('${o.id}','RETURNED', ${basePayload})">Return</button><hr>`;
+        list.appendChild(el);
+      });
+    });
+}
+
+function updateOrder(id,status,base){
+  const payload = { ...(base||{}), status: status };
+  if (currentUser && currentUser.id && !payload.user_id) payload.user_id = currentUser.id;
+  fetch(`${API_BASE}/orders/${id}`, {
+    method:"PUT", headers:{ "Content-Type":"application/json","X-API-Key":API_KEY },
+    body:JSON.stringify({ data: payload })
+  }).then(_=>loadOrders());
+}
+
+
+// ---------- Avaya Infinity Omni config for your page ----------
+window.AvayaInfinityOmniConfig = {
+  // You can keep using the CDN that your page already defaults to
+  // (OMNI_DEFAULTS.sdkUrl). Override if you want a fixed version.
+  sdkUrl: "/static/lib/avaya-infinity-omni-sdk-messaging-ui.min.js",
+  preferModule: false,
+
+  // Where to mount the chat widget (already present in your HTML)
+  mountId: "omniChatMount",
+
+  // Make login required (flip to true to allow guest chat)
+  allowAnonymous: false,
+
+  // >>> UPDATE THESE THREE for your tenant <<<
+  tokenEndpoint: "https://infinitychat-token-308630364964.us-central1.run.app/token",
+  hostName: "https://core.avaya-inf63.ec.avayacloud.com",          // e.g. https://api.<region>.avayacloud.com
+  integrationId: "018d0109078bf09eabb0eb44c9",    // 36-char SDK integration ID
+
+  // Called by your page when "Start Chat" is clicked
+  initialize: async ({ sdk, mountNode, config, identity }) =>
+  {
+  // 1) Fetch JWT from your token server
+  const body = {
+    userId: identity?.id || "web-guest",
+    userName: [identity?.firstName, identity?.lastName].filter(Boolean).join(" ") || undefined,
+    userIdentifiers: {
+      emailAddresses: identity?.email ? [identity.email] : undefined,
+      phoneNumbers: identity?.phone ? [identity.phone] : undefined
+    }
+  };
+  const compact = (o) => JSON.parse(JSON.stringify(o));
+  const r = await fetch(config.tokenEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(compact(body))
+  });
+  if (!r.ok) throw new Error(`Token fetch failed (${r.status})`);
+  const { jwtToken } = await r.json();
+
+  // 2) Core Messaging SDK: create client, auth, open chat
+  if (!sdk || typeof sdk.DigitalClient !== "function") {
+    throw new Error("DigitalClient not found on SDK. Check that /static/lib/avaya-infinity-omni-sdk-messaging.js loaded.");
+  }
+  const client = new sdk.DigitalClient({
+    host: config.hostName,
+    integrationId: config.integrationId
+  });
+  await client.authenticate({ jwtToken });
+
+  const chat = await client.chat.open({ container: mountNode });
+  return chat;
+},
+  // Optional callback after chat is ready
+  onReady: ({ session }) => {
+    console.log("Omni chat ready:", session);
+  }
+};
+
+
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
